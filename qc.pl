@@ -8,7 +8,7 @@ use HTML::Make;
 use File::Copy;
 use File::Basename;
 
-my ($lib_csv) = shift or die "perl $0 <lib csv>\n";
+my $lib_csv = shift or die "perl $0 <lib_csv>\n";
 
 my %lib_info = read_csv($lib_csv); 
 
