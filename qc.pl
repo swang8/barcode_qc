@@ -19,39 +19,50 @@ my @missed_header = ();
 map{
     push @missed_header, $_ unless exists $lib_info{$_}
 }@header_required;
-if(@missed_header){ print STDERR "Error: some of the headers are missing:", join(",", @missed_header), "\n"; exit }
+print STDERR join("-", keys %lib_info), "\n" if exists $ENV{DEBUG};
+print STDERR join("+", @header_required), "\n" if exists $ENV{DEBUG};
+
+if(@missed_header){ print STDERR "Error: some of the headers are missing:", join(",", @missed_header), "\n" if exists $ENV{DEBUG}; exit }
 
 $lib_info{"Barcode_source"} = [map{uc $_} @{$lib_info{"Barcode_source"} }];
 
-my %lib_info_zip = zip(@lib_info{4, @header_required}); # 4 indicate Barcode_id will be the key for hash
+my %lib_info_zip = zip(4, @lib_info{@header_required}); # 4 indicate Barcode_id will be the key for hash
 
 # load the barcode csv files
 my %barcodes = load_barcodes();
 my %barcodes_zip;
 map{
-    $barcodes_zip{$_} = zip(2, @barcodes{qw(Number	Id	i7	i5)})
+    my %tmp = %{$barcodes{$_}};
+    $barcodes_zip{$_} = {zip(2, @tmp{qw(Number	Id	i7	i5)})};
 }keys %barcodes;
 # Check
 my $output = "/tmp/" . random_str() . ".html";
-open(my $OUT, $output) or die $!;
+print STDERR "output: ", $output, "\n" if exists $ENV{DEBUG};
+open(my $OUT, ">", $output) or die $!;
 # a)	Will check for consistency Id vs Name vs Position in Plate
 ## ids
 my @tobe_checked;
 foreach my $k (keys %lib_info_zip){
+    print STDERR "\$k: ", $k, "\n" if exists $ENV{DEBUG};
     my @arr = @{$lib_info_zip{$k}};
+    print STDERR join("-", keys %{$barcodes_zip{$arr[-1]}}) if exists $ENV{DEBUG};
     if (not exists $barcodes_zip{$arr[-1]}) {
-        print STDERR "Error: $arr[-1] is not one of the (neb_CDI perkin_HT_S1 perkin_UDI perkin_UDI_4K txgen_combo)!"; 
+        print STDERR "Error: $arr[-1] is not one of the (neb_CDI perkin_HT_S1 perkin_UDI perkin_UDI_4K txgen_combo)!" if exists $ENV{DEBUG}; 
         exit;
     }
     my @results;
+    print STDERR "! ", $arr[2] , "\t", $barcodes_zip{$arr[-1]}->{$k}->[0], "\n" if exists $ENV{DEBUG};
+    print STDERR "! ", $arr[4] , "\t", $barcodes_zip{$arr[-1]}->{$k}->[2], "\n" if exists $ENV{DEBUG};
+    print STDERR "! ", $arr[5] , "\t", $barcodes_zip{$arr[-1]}->{$k}->[3], "\n" if exists $ENV{DEBUG};
     if ($arr[2] == $barcodes_zip{$arr[-1]}->{$k}->[0]){push @results, "Index number matching"}else{push @results, "Index number NOT matching"}
-    if ($arr[4] == $barcodes_zip{$arr[-1]}->{$k}->[2]){push @results, "i7 matching"}else{push @results, "i7 NOT matching"}
-    if ($arr[5] == $barcodes_zip{$arr[-1]}->{$k}->[3]){push @results, "i5 matching"}else{push @results, "i5 NOT matching"}
+    if ($arr[4] eq $barcodes_zip{$arr[-1]}->{$k}->[2]){push @results, "i7 matching"}else{push @results, "i7 NOT matching"}
+    if ($arr[5] eq $barcodes_zip{$arr[-1]}->{$k}->[3]){push @results, "i5 matching"}else{push @results, "i5 NOT matching"}
     print $OUT "<p>", join(",", @arr, @results), "</p>\n";
     push @tobe_checked, [uc $arr[4], uc $arr[5]];
 }
 
 # b)	Will check for barcode compatibility (with extension to 12+8 optional)
+print $OUT "<h2>Barcode conflict checking</h2>\n";
 my @conflicts = check_barcodes(\@tobe_checked);
 if (@conflicts){
     print $OUT "<a style=\"color:red\">There are conflicts detected!!</a><br>\n";
@@ -60,12 +71,15 @@ if (@conflicts){
     my $html = json_to_html($p);
     print $OUT $html->text();
 }
+else {
+    print $OUT "<a style=\"color:blue\">Barcodes are compatible!</a>"
+}
 
 # c)	Will generate report to download
 print $OUT "Report: ", "http://download.txgen.tamu.edu/shichen/".basename($output);
 close $OUT;
 
-my $new_file = "/home/shichen.wang/for_down/" . basename($output);
+my $new_file =  "./" . basename($output);
 copy($output, $new_file) or die "Copy failed: $!";
 print "Report: ", "http://download.txgen.tamu.edu/shichen/".basename($output);
 
@@ -78,12 +92,14 @@ sub load_barcodes {
     my $perkin_UDI_4k = "https://raw.githubusercontent.com/swang8/barcodes/master/PerkinElmer_NextFlex_UDI_4000.csv";
     my $txgen_combo = "https://raw.githubusercontent.com/swang8/barcodes/master/TxGen_DuLig_CDI_Combined.csv";
     my %h;
-    @h{map{uc $_}qw(neb_CDI perkin_HT_S1 perkin_UDI perkin_UDI_4K txgen_combo)} = 
-                ($neb_CDI, $perkin_HT_S1, $perkin_UDI, $perkin_UDI_4k, $txgen_combo);
+    my @sources = map{uc $_}qw(neb_CDI perkin_HT_S1 perkin_UDI perkin_UDI_4K txgen_combo);
+    @h{@sources} = ($neb_CDI, $perkin_HT_S1, $perkin_UDI, $perkin_UDI_4k, $txgen_combo);
     my %return;
     map{
-        my %info = read_csv($h{$_});
-        $return{$_} = \%info;
+        my $s = $_;
+        print STDERR "Source: ", $s, "\n" if exists $ENV{DEBUG};
+        my %info = read_csv($h{$s});
+        $return{$s} = \%info;
     }keys %h;
     return %return;
 }
@@ -96,33 +112,36 @@ sub get_barcode_file {
 
 sub read_csv {
     my $f = shift;
-    print STDERR "CSV: ", $f, "\n";
+    print STDERR "CSV: ", $f, "\n" if exists $ENV{DEBUG};
     my $IN;
-    if ($f=~/http/){open($IN, "wget -O- -nv $f |") or die $!}
+    if ($f=~/^http/){open($IN, "wget -O- -nv $f |") or die $!}
     else{open($IN, $f) or die "$f is not readable!\n";}
     
     my %return;
     my @header;
     my $line = 0;
     while(<$IN>){
-        next if /^\#/;
+        next if /\#/;
         chomp;
         s/\,+$//;
         next unless /\S/;
         $line++;
-        my @t = split /,/, $_;
-        if ($line == 1){@header = @t; print STDERR "Header: ", $_, "\n"; next}
+        s/\s+//g;
+        my @t = split /\,/, $_;
+        if ($line == 1){@header = @t;  print STDERR "Header: ", join(" : ", @header), "\n" if exists $ENV{DEBUG}; next}
         map{
             push @{$return{$header[$_]}}, $t[$_]
         }0..$#t;
     }
     close $IN;
+    print STDERR join("-", keys %return), "\n" if exists $ENV{DEBUG};
     return %return;
 }
 
 sub zip {
     my $k = shift;
     my @arr = @_;
+    map{print STDERR ref $_, "\n" if exists $ENV{DEBUG}}@arr;
     my @len = map{scalar @$_; }@arr;
     my $max_len = max(@len);
     my %return;
@@ -133,7 +152,8 @@ sub zip {
             if ($index > $len[$ref] - 1) {$index = $len[$ref] - $index}
             push @z, $arr[$ref]->[$index]
         }
-        $return{$z[$k-1]} = [@z]
+        if (exists $return{$z[$k-1]}){print STDERR "Duplicated barcode ID ($z[$k-1]) detected!!\n\n";}
+        else{$return{$z[$k-1]} = [@z];}
     } 0 .. $max_len - 1;
 
     return %return;
@@ -147,8 +167,8 @@ sub max {
 }
 
 sub random_str {
-    my $l = shift || 8;
-    my @letters=('a..z', 'A..Z', 0..9);
+    my $l = shift || 12;
+    my @letters=('a'..'z', 'A'..'Z', 0..9);
     my $return="";
     map{$return .= $letters[int(rand(scalar @letters))]}1..$l;
     return $return
@@ -171,7 +191,7 @@ sub check_barcodes{
       my $type_b = scalar @bb == 1?"single":"double";
       if($type_a eq "single" or $type_b eq "single"){
         my $id = join(" ", sort{$a cmp $b}($ba[0], $bb[0]) );
-        # print STDERR $id, "\t", $dist{$id}, "\n";
+        # print STDERR $id, "\t", $dist{$id}, "\n" if exists $ENV{DEBUG};
         if (! exists $dist{$id}){die "$id not in \%dist\n"}
         if($dist{$id} < $cutoff){
             push @conf, join("_", @{$arr[$ind2]}, $dist{$id});
@@ -179,8 +199,8 @@ sub check_barcodes{
       }else{
         my $id0 = join(" ", sort{$a cmp $b}($ba[0], $bb[0]) );
         my $id1 = join(" ", sort{$a cmp $b}($ba[1], $bb[1]) );
-        #print STDERR $id0, "\t", $dist{$id0}, "\n";
-        #print STDERR $id1, "\t", $dist{$id1}, "\n";
+        #print STDERR $id0, "\t", $dist{$id0}, "\n" if exists $ENV{DEBUG};
+        #print STDERR $id1, "\t", $dist{$id1}, "\n" if exists $ENV{DEBUG};
         if($dist{$id0} < $cutoff and $dist{$id1} < $cutoff){
             push @conf, join("_", @{$arr[$ind2]}, $dist{$id0}, $dist{$id1});
         }
