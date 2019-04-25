@@ -22,7 +22,7 @@ map{
 print STDERR join("-", keys %lib_info), "\n" if exists $ENV{DEBUG};
 print STDERR join("+", @header_required), "\n" if exists $ENV{DEBUG};
 
-if(@missed_header){ print STDERR "Error: some of the headers are missing:", join(",", @missed_header), "\n" if exists $ENV{DEBUG}; exit }
+if(@missed_header){ print STDERR "Error: some of the headers are missing:", join(",", @missed_header), "\n" ; exit }
 
 $lib_info{"Barcode_source"} = [map{uc $_} @{$lib_info{"Barcode_source"} }];
 
@@ -66,7 +66,8 @@ print $OUT "<h2>Barcode conflict checking</h2>\n";
 my @conflicts = check_barcodes(\@tobe_checked);
 if (@conflicts){
     print $OUT "<a style=\"color:red\">There are conflicts detected!!</a><br>\n";
-    my $json = to_json(@conflicts);
+    my $json = to_json([@conflicts]);
+    print STDERR $json, "\n" if exists $ENV{DEBUG};
     my $p = parse_json($json);
     my $html = json_to_html($p);
     print $OUT $html->text();
