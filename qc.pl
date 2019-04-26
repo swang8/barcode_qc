@@ -25,8 +25,11 @@ print STDERR join("+", @header_required), "\n" if exists $ENV{DEBUG};
 if(@missed_header){ print STDERR "Error: some of the headers are missing:", join(",", @missed_header), "\n" ; exit }
 
 $lib_info{"Barcode_source"} = [map{uc $_} @{$lib_info{"Barcode_source"} }];
+my @projects = unique(@{$lib_info{@header_required[1]}});
 
-my %lib_info_zip = zip(4, @lib_info{@header_required}); # 4 indicate Barcode_id will be the key for hash
+
+my $lib_header_as_key = 4;
+my %lib_info_zip = zip($lib_header_as_key, @lib_info{@header_required}); # 4 indicate Barcode_id will be the key for hash
 
 # load the barcode csv files
 my %barcodes = load_barcodes();
@@ -36,13 +39,16 @@ map{
     $barcodes_zip{$_} = {zip(2, @tmp{qw(Number	Id	i7	i5)})};
 }keys %barcodes;
 # Check
-my $output = "/tmp/" . random_str() . ".html";
+my $output = "/tmp/" . join("_", @projects) . "_". random_str() . ".html";
 print STDERR "output: ", $output, "\n" if exists $ENV{DEBUG};
 open(my $OUT, ">", $output) or die $!;
+print_header($OUT);
 # a)	Will check for consistency Id vs Name vs Position in Plate
+print $OUT "<h2>Check for consistency Id vs Name vs Position in Plate </h2>\n";
+print $OUT "<pre>\n";
 ## ids
 my @tobe_checked;
-foreach my $k (keys %lib_info_zip){
+foreach my $k (@{$lib_info{$header_required[$lib_header_as_key-1]}}){
     print STDERR "\$k: ", $k, "\n" if exists $ENV{DEBUG};
     my @arr = @{$lib_info_zip{$k}};
     print STDERR join("-", keys %{$barcodes_zip{$arr[-1]}}) if exists $ENV{DEBUG};
@@ -56,10 +62,21 @@ foreach my $k (keys %lib_info_zip){
     print STDERR "! ", $arr[5] , "\t", $barcodes_zip{$arr[-1]}->{$k}->[3], "\n" if exists $ENV{DEBUG};
     if ($arr[2] == $barcodes_zip{$arr[-1]}->{$k}->[0]){push @results, "Index number matching"}else{push @results, "Index number NOT matching"}
     if ($arr[4] eq $barcodes_zip{$arr[-1]}->{$k}->[2]){push @results, "i7 matching"}else{push @results, "i7 NOT matching"}
-    if ($arr[5] eq $barcodes_zip{$arr[-1]}->{$k}->[3]){push @results, "i5 matching"}else{push @results, "i5 NOT matching"}
-    print $OUT "<p>", join(",", @arr, @results), "</p>\n";
-    push @tobe_checked, [uc $arr[4], uc $arr[5]];
+    if ($barcodes_zip{$arr[-1]}->{$k}->[3] ){
+        if ($arr[5] eq $barcodes_zip{$arr[-1]}->{$k}->[3]){push @results, "i5 matching"}else{push @results, "i5 NOT matching"}
+    }
+    else{
+        push @results, "i5 empty"    
+    }
+    print $OUT "<p>", join(", ", @arr, @results), "</p>\n";
+    if ($arr[5]){
+        push @tobe_checked, [uc $arr[4], uc $arr[5]];
+    }
+    else {
+        push @tobe_checked, [uc $arr[4]];    
+    }
 }
+print $OUT "</pre>\n";
 
 # b)	Will check for barcode compatibility (with extension to 12+8 optional)
 print $OUT "<h2>Barcode conflict checking</h2>\n";
@@ -76,13 +93,16 @@ else {
     print $OUT "<a style=\"color:blue\">Barcodes are compatible!</a>"
 }
 
+print $OUT "<hr>\n";
 # c)	Will generate report to download
-print $OUT "Report: ", "http://download.txgen.tamu.edu/shichen/".basename($output);
+my $report_url = "http://download.txgen.tamu.edu/check_reports/".basename($output);
+print $OUT "Report: ", "<a href=\"$report_url\"> $report_url </a>";
+print_end($OUT);
 close $OUT;
 
-my $new_file =  "./" . basename($output);
-copy($output, $new_file) or die "Copy failed: $!";
-print "Report: ", "http://download.txgen.tamu.edu/shichen/".basename($output);
+my $new_file =  "/data3/Downloads/check_reports/" . basename($output);
+copy($output, $new_file) or print STDERR "Copy failed: $new_file can not be made.\n";
+print "Report: ", "http://download.txgen.tamu.edu/check_reports/".basename($output);
 
 
 ######
@@ -233,7 +253,8 @@ sub calculate_distance{
 
 sub unique{
   my @arr =@_;
-  my %h = map{$_, 1 if /\S/}@arr;
+  my %h;
+  %h = map{$_, 1 if /\S/}@arr;
   return keys %h;
 }
 
@@ -261,4 +282,52 @@ sub json_to_html
         $element = HTML::Make->new ('span', text => $input);
     }
     return $element;
+}
+
+sub print_header {
+    my $fh = shift;
+    my $h = qq(
+<html lang="en">
+<head>
+  <title></title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+  <style>
+  pre {
+    height: auto;
+    max-height: 500px;
+    overflow: auto;
+    background-color: #eeeeee;
+    word-break: normal !important;
+    word-wrap: normal !important;
+    white-space: pre !important;
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="row">
+        <div id="logo" class="col-xs-3">
+                <a href="http://agriliferesearch.tamu.edu/"><img src="/media/image/logo.png" alt="Texas A&amp;M AgriLife Research" class="img-responsive"/></a>
+        </div>
+
+        <div id="logo" class="col-xs-9">
+                <a href="http://txgen.tamu.edu/"><img src="/media/image/txgen_logo2.png" alt="Genomics and Bioinformatics Services" style="width:30%;" class="img-responsive pull-right"/></a>
+        </div>
+  </div>
+<hr>    
+    );
+    print $fh $h, "\n";
+}
+
+sub print_end {
+    my $fh = shift;
+    my $e =  qq(
+</div>
+</body>
+</html>
+    );
 }
