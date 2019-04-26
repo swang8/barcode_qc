@@ -25,7 +25,7 @@ print STDERR join("+", @header_required), "\n" if exists $ENV{DEBUG};
 if(@missed_header){ print STDERR "Error: some of the headers are missing:", join(",", @missed_header), "\n" ; exit }
 
 $lib_info{"Barcode_source"} = [map{uc $_} @{$lib_info{"Barcode_source"} }];
-my @projects = unique(@{$lib_info{@header_required[1]}});
+my @projects = unique(@{$lib_info{$header_required[1]}});
 
 
 my $lib_header_as_key = 4;
@@ -45,9 +45,10 @@ open(my $OUT, ">", $output) or die $!;
 print_header($OUT);
 # a)	Will check for consistency Id vs Name vs Position in Plate
 print $OUT "<h2>Check for consistency Id vs Name vs Position in Plate </h2>\n";
-print $OUT "<pre>\n";
 ## ids
 my @tobe_checked;
+my ($num_error, $i7_error, $i5_error) = (0, 0, 0);
+my @check_results;
 foreach my $k (@{$lib_info{$header_required[$lib_header_as_key-1]}}){
     print STDERR "\$k: ", $k, "\n" if exists $ENV{DEBUG};
     my @arr = @{$lib_info_zip{$k}};
@@ -60,15 +61,15 @@ foreach my $k (@{$lib_info{$header_required[$lib_header_as_key-1]}}){
     print STDERR "! ", $arr[2] , "\t", $barcodes_zip{$arr[-1]}->{$k}->[0], "\n" if exists $ENV{DEBUG};
     print STDERR "! ", $arr[4] , "\t", $barcodes_zip{$arr[-1]}->{$k}->[2], "\n" if exists $ENV{DEBUG};
     print STDERR "! ", $arr[5] , "\t", $barcodes_zip{$arr[-1]}->{$k}->[3], "\n" if exists $ENV{DEBUG};
-    if ($arr[2] == $barcodes_zip{$arr[-1]}->{$k}->[0]){push @results, "Index number matching"}else{push @results, "Index number NOT matching"}
-    if ($arr[4] eq $barcodes_zip{$arr[-1]}->{$k}->[2]){push @results, "i7 matching"}else{push @results, "i7 NOT matching"}
+    if ($arr[2] == $barcodes_zip{$arr[-1]}->{$k}->[0]){push @results, "Index number matching"}else{push @results, "Index number <code>NOT</code> matching"; $num_error++}
+    if ($arr[4] eq $barcodes_zip{$arr[-1]}->{$k}->[2]){push @results, "i7 matching"}else{push @results, "i7 NOT matching"; $i7_error++}
     if ($barcodes_zip{$arr[-1]}->{$k}->[3] ){
-        if ($arr[5] eq $barcodes_zip{$arr[-1]}->{$k}->[3]){push @results, "i5 matching"}else{push @results, "i5 NOT matching"}
+        if ($arr[5] eq $barcodes_zip{$arr[-1]}->{$k}->[3]){push @results, "i5 matching"}else{push @results, "i5 NOT matching"; $i5_error++}
     }
     else{
         push @results, "i5 empty"    
     }
-    print $OUT "<p>", join(", ", @arr, @results), "</p>\n";
+    push @check_results,  "<p>". join(", ", @arr, @results), "</p>";
     if ($arr[5]){
         push @tobe_checked, [uc $arr[4], uc $arr[5]];
     }
@@ -76,6 +77,10 @@ foreach my $k (@{$lib_info{$header_required[$lib_header_as_key-1]}}){
         push @tobe_checked, [uc $arr[4]];    
     }
 }
+
+print $OUT "<div><li>Index number error: ",  add_color($num_error), "</li><li> i7 seq error: ", add_color($i7_error), "</li><li>i5 seq error: ", add_color($i5_error), "</li></div>\n";
+print $OUT "<pre>\n";
+print $OUT join("\n", @check_results), "\n";
 print $OUT "</pre>\n";
 
 # b)	Will check for barcode compatibility (with extension to 12+8 optional)
@@ -87,7 +92,8 @@ if (@conflicts){
     print STDERR $json, "\n" if exists $ENV{DEBUG};
     my $p = parse_json($json);
     my $html = json_to_html($p);
-    print $OUT $html->text();
+    my $txt = $html->text();
+    print $OUT $txt;
 }
 else {
     print $OUT "<a style=\"color:blue\">Barcodes are compatible!</a>"
@@ -96,12 +102,13 @@ else {
 print $OUT "<hr>\n";
 # c)	Will generate report to download
 my $report_url = "http://download.txgen.tamu.edu/check_reports/".basename($output);
-print $OUT "Report: ", "<a href=\"$report_url\"> $report_url </a>";
+print $OUT "Report: ", "<a target=\"_blank\" href=\"$report_url\"> $report_url </a>";
 print_end($OUT);
 close $OUT;
 
 my $new_file =  "/data3/Downloads/check_reports/" . basename($output);
 copy($output, $new_file) or print STDERR "Copy failed: $new_file can not be made.\n";
+copy($output, "./".basename($output)) or print STDERR "Copy failed: $output can not be made.\n";
 print "Report: ", "http://download.txgen.tamu.edu/check_reports/".basename($output);
 
 
@@ -305,17 +312,24 @@ sub print_header {
     word-wrap: normal !important;
     white-space: pre !important;
 }
+
+table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
+
 </style>
 </head>
 <body>
 <div class="container">
   <div class="row">
         <div id="logo" class="col-xs-3">
-                <a href="http://agriliferesearch.tamu.edu/"><img src="/media/image/logo.png" alt="Texas A&amp;M AgriLife Research" class="img-responsive"/></a>
+                <a href="http://agriliferesearch.tamu.edu/"><img src="http://download.txgen.tamu.edu/media/image/logo.png" alt="Texas A&amp;M AgriLife Research" class="img-responsive"/></a>
         </div>
 
         <div id="logo" class="col-xs-9">
-                <a href="http://txgen.tamu.edu/"><img src="/media/image/txgen_logo2.png" alt="Genomics and Bioinformatics Services" style="width:30%;" class="img-responsive pull-right"/></a>
+                <a href="http://txgen.tamu.edu/"><img src="http://download.txgen.tamu.edu/media/image/txgen_logo2.png" alt="Genomics and Bioinformatics Services" style="width:30%;" class="img-responsive pull-right"/></a>
         </div>
   </div>
 <hr>    
@@ -327,7 +341,16 @@ sub print_end {
     my $fh = shift;
     my $e =  qq(
 </div>
+<hr>
 </body>
 </html>
     );
+    print $fh $e;
+}
+sub add_color {
+    my $n = shift;
+    my $res;
+    if ($n > 0){$res = "<a style=\"color:red\">" . $n . "</a>"}
+    else{$res = "<a style=\"color:green\">" . $n . "</a>"}
+    return $res;
 }
