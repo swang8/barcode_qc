@@ -18,6 +18,7 @@ my $start = localtime(time);
 my $q = new CGI;
 print $q->header(-type => "application/json", -charset => "utf-8");
 my $len = $q->param('selection');
+$len += 1;
 my $lib_csv = get_file($q);
 if ($lib_csv){
   my @status = compatibility_check($lib_csv);
@@ -40,7 +41,7 @@ sub compatibility_check {
     print STDERR join("-", keys %lib_info), "\n" if exists $ENV{DEBUG};
     print STDERR join("+", @header_required), "\n" if exists $ENV{DEBUG};
 
-    if(@missed_header){ print STDERR "Error: some of the headers are missing:", join(",", @missed_header), "\n" ; exit }
+    if(@missed_header){ print STDERR "Error :  some of the headers are missing : ", join(",", @missed_header), "\n" ; exit }
 
     $lib_info{"Barcode_source"} = [map{uc $_} @{$lib_info{"Barcode_source"} }];
     my @projects = unique(@{$lib_info{$header_required[1]}});
@@ -58,7 +59,7 @@ sub compatibility_check {
     }keys %barcodes;
     # Check
     my $output = "/tmp/" . join("_", @projects) . "_". random_string() . ".html";
-    print STDERR "output: ", $output, "\n" if exists $ENV{DEBUG};
+    print STDERR "output :  ", $output, "\n" if exists $ENV{DEBUG};
     open(my $OUT, ">", $output) or die $!;
     print_header($OUT);
     # a)	Will check for consistency Id vs Name vs Position in Plate
@@ -68,11 +69,11 @@ sub compatibility_check {
     my ($num_error, $i7_error, $i5_error) = (0, 0, 0);
     my @check_results;
     foreach my $k (@{$lib_info{$header_required[$lib_header_as_key-1]}}){
-        print STDERR "\$k: ", $k, "\n" if exists $ENV{DEBUG};
+        print STDERR "\$k :  ", $k, "\n" if exists $ENV{DEBUG};
         my @arr = @{$lib_info_zip{$k}};
         print STDERR join("-", keys %{$barcodes_zip{$arr[-1]}}) if exists $ENV{DEBUG};
         if (not exists $barcodes_zip{$arr[-1]}) {
-            print STDERR "Error: $arr[-1] is not one of the (neb_CDI perkin_HT_S1 perkin_UDI perkin_UDI_4K txgen_combo)!" if exists $ENV{DEBUG}; 
+            print STDERR "Error :  $arr[-1] is not one of the (neb_CDI perkin_HT_S1 perkin_UDI perkin_UDI_4K txgen_combo)!" if exists $ENV{DEBUG}; 
             exit;
         }
         my @results;
@@ -89,20 +90,27 @@ sub compatibility_check {
         }
         push @check_results,  join(", ", @arr, @results);
         if ($arr[5]){
-            push @tobe_checked, [$arr[3], uc $arr[4], uc $arr[5]];
+                push @tobe_checked, [@arr[0, 3], uc $arr[4], uc $arr[5]];
         }
         else {
-            push @tobe_checked, [$arr[3], uc $arr[4]];    
+            push @tobe_checked, [@arr[0, 3], uc $arr[4]];    
         }
     }
-
-    print $OUT "<div><li>Index number error: ",  add_color($num_error), "</li><li> i7 seq error: ", add_color($i7_error), "</li><li>i5 seq error: ", add_color($i5_error), "</li></div>\n";
-    print $OUT "<p><h4>Error list:</h4></p>\n";
+# qw(Sample Project Barcode_number  Barcode_id  i7  i5  Barcode_source);
+    print $OUT "<div id=\"stats\">";
+    print $OUT  "Total samples: ", scalar @{$lib_info{$header_required[0]}}, "<br>\n";
+    print $OUT  "Total projects: ", scalar unique(@{$lib_info{$header_required[1]}}), "<br>\n";
+    print $OUT  "Total unique barcodes: ", scalar unique(@{$lib_info{$header_required[3]}}), "<br>\n";
+    print $OUT  "From barcode sources: ", join(", ", unique(@{$lib_info{$header_required[6]}}) ), "<br>\n";
+    print $OUT "</div>";
+    print $OUT "<br>";
+    print $OUT "<div><li>Index number error :  ",  add_color($num_error), "</li><li> i7 seq error :  ", add_color($i7_error), "</li><li>i5 seq error :  ", add_color($i5_error), "</li></div>\n";
+    print $OUT "<p><h4>Error list : </h4></p>\n";
     print $OUT "<pre>\n";
     print $OUT join("\n", grep{/NOT/}@check_results), "\n";
     print $OUT "</pre>\n";
 
-    print $OUT "<p><h4>Full list:</h4></p>\n";
+    print $OUT "<p><h4>Full list : </h4></p>\n";
     print $OUT "<pre>\n";
     print $OUT join("\n", @check_results), "\n";
     print $OUT "</pre>\n";
@@ -116,32 +124,48 @@ sub compatibility_check {
     print $OUT $count_table, "\n";
 
     if (@conflicts){
-        print $OUT "<h4><a style=\"color:red\">There are conflicts detected!!" , (scalar @conflicts > 10?" A lot!":""),   "</a><h4><br>\n";
+        print $OUT "<h4><a style=\"color : red\">There are conflicts detected!!" , (scalar @conflicts > 10?" A lot!" : ""),   "</a><h4><br>\n";
         my $json = to_json([@conflicts]);
         print STDERR $json, "\n" if exists $ENV{DEBUG};
         my $p = parse_json($json);
         my $html = json_to_html($p);
         my $txt = $html->text();
         $txt =~ s/\<table/\<table class=\"table\"/g;
-        print $OUT "<div style=\"width: 100%; height: 600px; overflow-y: scroll; background-color:\#eee\">";
+        print $OUT "<div style=\"width :  100%; height :  600px; overflow-y :  scroll; background-color : \#eee\">";
         print $OUT $txt;
         print $OUT "</div>"
     }
     else {
-        print $OUT "<a style=\"color:blue\">Barcodes are compatible!</a>"
+        print $OUT "<a style=\"color : blue\">Barcodes are compatible!</a>"
     }
 
     print $OUT "<hr>\n";
+    print $OUT "<h3>The original input file (with conflicted ones colored in red) :</h3>";
+    print $OUT "<pre id=\"original\" style=\"width :  100%; height :  600px; overflow-y :  scroll; background-color : \#eee\"  >";
+    my %conflict_barcodes = map{my $id=(split / : /, $_->{barcode})[1]; ($id, 1) }@conflicts;
+    open (ORI, $lib_csv) or die $!;
+    #qw(Sample Project Barcode_number  Barcode_id  i7  i5  Barcode_source);
+    my $bid_index;
+    while(<ORI>){
+      chomp;
+      my @t = split /,/, $_;
+      if($. == 1){map{$bid_index = $_ if $t[$_] eq "Barcode_id"} 0..$#t;}
+      $t[$bid_index]=~s/\s//g;
+      if (exists $conflict_barcodes{$t[$bid_index]}){print $OUT "<a style=\"color:red\">", $_, "</a>\n"}
+      else{print $OUT $_, "\n"}
+    }
+    print $OUT "</pre>";
+    print $OUT "<hr>\n";
     # c)	Will generate report to download
     my $report_url = "http://download.txgen.tamu.edu/check_reports/".basename($output);
-    print $OUT "Report: ", "<a target=\"_blank\" href=\"$report_url\"> $report_url </a>";
+    print $OUT "Report :  ", "<a target=\"_blank\" href=\"$report_url\"> $report_url </a>";
     print_end($OUT);
     close $OUT;
 
     my $new_file =  "/data3/Downloads/check_reports/" . basename($output);
-    copy($output, $new_file) ; #or print STDERR "Copy failed: $new_file can not be made.\n";
-    copy($output, "./".basename($output)) ; #or print STDERR "Copy failed: $output can not be made.\n";
-    print STDERR "Report: ", "http://download.txgen.tamu.edu/check_reports/".basename($output);
+    copy($output, $new_file) ; #or print STDERR "Copy failed :  $new_file can not be made.\n";
+    copy($output, "./".basename($output)) ; #or print STDERR "Copy failed :  $output can not be made.\n";
+    print STDERR "Report :  ", "http://download.txgen.tamu.edu/check_reports/".basename($output);
 
     my $any_error = 0; $any_error = 1 if $num_error or $i7_error or $i5_error or scalar @conflicts > 0;
     return ({"report"=>$report_url, "errors"=> $any_error})
@@ -160,7 +184,7 @@ sub load_barcodes {
     my %return;
     map{
         my $s = $_;
-        print STDERR "Source: ", $s, "\n" if exists $ENV{DEBUG};
+        print STDERR "Source :  ", $s, "\n" if exists $ENV{DEBUG};
         my %info = read_csv($h{$s});
         $return{$s} = \%info;
     }keys %h;
@@ -175,7 +199,7 @@ sub get_barcode_file {
 
 sub read_csv {
     my $f = shift;
-    print STDERR "CSV: ", $f, "\n" if exists $ENV{DEBUG};
+    print STDERR "CSV :  ", $f, "\n" if exists $ENV{DEBUG};
     my $IN;
     if ($f=~/^http/){open($IN, "wget -O- -nv $f |") or die $!}
     else{open($IN, $f) or die "$f is not readable!\n";}
@@ -191,7 +215,7 @@ sub read_csv {
         $line++;
         s/\s+//g;
         my @t = split /\,/, $_;
-        if ($line == 1){@header = @t;  print STDERR "Header: ", join(" : ", @header), "\n" if exists $ENV{DEBUG}; next}
+        if ($line == 1){@header = @t;  print STDERR "Header :  ", join("  :  ", @header), "\n" if exists $ENV{DEBUG}; next}
         map{
             push @{$return{$header[$_]}}, $t[$_]
         }0..$#t;
@@ -238,26 +262,26 @@ sub random_string {
 }
 
 sub check_barcodes{
-  my $arr_ref = shift; # [name, seq1, seq2]
+  my $arr_ref = shift; # [sample, name, seq1, seq2]
   my $cutoff = shift;
   $cutoff = 3 unless $cutoff;
-  my @arr = map{my @p = @$_; shift @p; [@p]} @$arr_ref;
+  my @arr = map{my @p = @$_; [@p[2..$#p]]} @$arr_ref;
   # checking
   my %dist = calculate_distance(@arr);
   my @conflict=();
   foreach my $ind1 (0 ..$#arr){
     my @ba = @{$arr[$ind1]};
-    my $type_a = scalar @ba == 1?"single":"double";
+    my $type_a = scalar @ba == 1?"single" : "double";
     my @conf=();
     foreach my $ind2 ($ind1+1 .. $#arr){
       my @bb = @{$arr[$ind2]};
-      my $type_b = scalar @bb == 1?"single":"double";
+      my $type_b = scalar @bb == 1?"single" : "double";
       if($type_a eq "single" or $type_b eq "single"){
         my $id = join(" ", sort{$a cmp $b}($ba[0], $bb[0]) );
         # print STDERR $id, "\t", $dist{$id}, "\n" if exists $ENV{DEBUG};
         if (! exists $dist{$id}){die "$id not in \%dist\n"}
         if($dist{$id} < $cutoff){
-            push @conf, join("_", $arr_ref->[$ind2][0], @{$arr[$ind2]}, $dist{$id});
+            push @conf, join(" : ", $arr_ref->[$ind2][0], $arr_ref->[$ind2][1],@{$arr[$ind2]}, $dist{$id});
         }
       }else{
         my $id0 = join(" ", sort{$a cmp $b}($ba[0], $bb[0]) );
@@ -265,11 +289,12 @@ sub check_barcodes{
         #print STDERR $id0, "\t", $dist{$id0}, "\n" if exists $ENV{DEBUG};
         #print STDERR $id1, "\t", $dist{$id1}, "\n" if exists $ENV{DEBUG};
         if($dist{$id0} < $cutoff and $dist{$id1} < $cutoff){
-            push @conf, join("_",$arr_ref->[$ind2][0],  @{$arr[$ind2]}, $dist{$id0}, $dist{$id1});
+            push @conf, join(" : ",$arr_ref->[$ind2][0],$arr_ref->[$ind2][1],  @{$arr[$ind2]}, $dist{$id0}, $dist{$id1});
         }
       }
     }
-    push @conflict, {"barcode"=>join("_", $arr_ref->[$ind1][0], @{$arr[$ind1]}), "potential_conflict"=>join(",", @conf)} if @conf > 0;
+    #push @conflict, {"barcode"=>join(" : ", $arr_ref->[$ind1][0],$arr_ref->[$ind1][1], @{$arr[$ind1]}), "potential_conflict"=>join(", ", @conf)} if @conf > 0;
+    map{my @p = split / : /, $_; if(scalar @p==6){@p=(@p[-2,-1])}else{@p=($p[-1], " ")} push @conflict, {"barcode" => join(" : ", $arr_ref->[$ind1][0],$arr_ref->[$ind1][1], @{$arr[$ind1]}), "conflict"=> $_, "mismatches" => join(" : ", @p)  } }@conf; 
   }
   return @conflict;
 }
@@ -280,9 +305,9 @@ sub count_barcode_conflict {
   my @return = map{0} 0.. $cutoff-1;
   foreach my $href (@conflicts) {
     map{
-      my @p = split /_/, $_; 
+      my @p = split / : /, $_; 
       $return[$p[-1]]++
-    }(split /,/, $href->{"potential_conflict"});     
+    }(split /,/, $href->{"conflict"});     
   }
   return @return;
 }
@@ -297,7 +322,7 @@ sub calculate_distance{
           my $id = join(" ", sort{$a cmp $b}($ka, $kb));
           next if exists $dist{$id};
           if($ka eq $kb){$dist{$id} = 0; next}
-          my $min_len = length $ka > length $kb?(length $kb):(length $ka);
+          my $min_len = length $ka > length $kb?(length $kb) : (length $ka);
           my $d = 0;
           foreach my $ind (0..$min_len-1){$d++ if substr($ka, $ind, 1) ne substr($kb, $ind, 1) }
           $dist{$id}=$d
@@ -352,19 +377,19 @@ sub print_header {
   <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
   <style>
   pre {
-    height: auto;
-    max-height: 500px;
-    overflow: auto;
-    background-color: #eeeeee;
-    word-break: normal !important;
-    word-wrap: normal !important;
-    white-space: pre !important;
+    height :  auto;
+    max-height :  500px;
+    overflow :  auto;
+    background-color :  #eeeeee;
+    word-break :  normal !important;
+    word-wrap :  normal !important;
+    white-space :  pre !important;
 }
 
 table {
-        display: block;
-        overflow-x: auto;
-        white-space: nowrap;
+        display :  block;
+        overflow-x :  auto;
+        white-space :  nowrap;
     }
 
 </style>
@@ -377,7 +402,7 @@ table {
         </div>
 
         <div id="logo" class="col-xs-9">
-                <a href="http://txgen.tamu.edu/"><img src="http://download.txgen.tamu.edu/media/image/txgen_logo2.png" alt="Genomics and Bioinformatics Services" style="width:30%;" class="img-responsive pull-right"/></a>
+                <a href="http://txgen.tamu.edu/"><img src="http://download.txgen.tamu.edu/media/image/txgen_logo2.png" alt="Genomics and Bioinformatics Services" style="width : 30%;" class="img-responsive pull-right"/></a>
         </div>
   </div>
 <hr>    
@@ -398,8 +423,8 @@ sub print_end {
 sub add_color {
     my $n = shift;
     my $res;
-    if ($n > 0){$res = "<a style=\"color:red\">" . $n . "</a>"}
-    else{$res = "<a style=\"color:green\">" . $n . "</a>"}
+    if ($n > 0){$res = "<a style=\"color : red\">" . $n . "</a>"}
+    else{$res = "<a style=\"color : green\">" . $n . "</a>"}
     return $res;
 }
 
