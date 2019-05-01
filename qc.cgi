@@ -20,6 +20,15 @@ print $q->header(-type => "application/json", -charset => "utf-8");
 my $len = $q->param('selection');
 $len += 1;
 my $lib_csv = get_file($q);
+    
+my %barcode_source_urls = (
+NEB_CDI  => "https://raw.githubusercontent.com/swang8/barcodes/master/NEB_NEXT_CDI_Combined.csv",
+PERKIN_HT_S1 => "https://raw.githubusercontent.com/swang8/barcodes/master/PerkinElmer_NextFlex_HT_SI.csv",
+PERKIN_UDI => "https://raw.githubusercontent.com/swang8/barcodes/master/PerkinElmer_NextFlex_UDI.csv",
+PERKIN_UDI_4K => "https://raw.githubusercontent.com/swang8/barcodes/master/PerkinElmer_NextFlex_UDI_4000.csv",
+TXGEN_DULIG => "https://raw.githubusercontent.com/swang8/barcodes/master/TxGen_DuLig_CDI_Combined.csv"
+);
+
 if ($lib_csv){
   my @status = compatibility_check($lib_csv);
   my $json = to_json(\@status);
@@ -63,7 +72,7 @@ sub compatibility_check {
     open(my $OUT, ">", $output) or die $!;
     print_header($OUT);
     # a)	Will check for consistency Id vs Name vs Position in Plate
-    print $OUT "<h2>Check for consistency Id vs Name vs Position in Plate </h2>\n";
+    print $OUT "<h2>1. Check for consistency Id vs Name vs Position in Plate </h2>\n";
     ## ids
     my @tobe_checked;
     my ($num_error, $i7_error, $i5_error) = (0, 0, 0);
@@ -99,24 +108,24 @@ sub compatibility_check {
 # qw(Sample Project Barcode_number  Barcode_id  i7  i5  Barcode_source);
     print $OUT "<div id=\"stats\">";
     print $OUT  "Total samples: ", scalar @{$lib_info{$header_required[0]}}, "<br>\n";
-    print $OUT  "Total projects: ", scalar unique(@{$lib_info{$header_required[1]}}), "<br>\n";
+    print $OUT  "Projects: total ", scalar unique(@{$lib_info{$header_required[1]}}),": ", join(", ", unique(@{$lib_info{$header_required[1]}})), "<br>\n";
     print $OUT  "Total unique barcodes: ", scalar unique(@{$lib_info{$header_required[3]}}), "<br>\n";
-    print $OUT  "From barcode sources: ", join(", ", unique(@{$lib_info{$header_required[6]}}) ), "<br>\n";
+    print $OUT  "From barcode sources: ", join(", ", map{"<a target= \"_blank\" href=\"$barcode_source_urls{$_}\">".$_."</a>" }unique(@{$lib_info{$header_required[6]}}) ), "<br>\n";
     print $OUT "</div>";
     print $OUT "<br>";
-    print $OUT "<div><li>Index number error :  ",  add_color($num_error), "</li><li> i7 seq error :  ", add_color($i7_error), "</li><li>i5 seq error :  ", add_color($i5_error), "</li></div>\n";
+    print $OUT "<div>Error count: <li>Index number error :  ",  add_color($num_error), "</li><li> i7 seq error :  ", add_color($i7_error), "</li><li>i5 seq error :  ", add_color($i5_error), "</li></div>\n";
     print $OUT "<p><h4>Error list : </h4></p>\n";
     print $OUT "<pre>\n";
     print $OUT join("\n", grep{/NOT/}@check_results), "\n";
     print $OUT "</pre>\n";
 
-    print $OUT "<p><h4>Full list : </h4></p>\n";
+    print $OUT "<p><h4>Full checking reports : </h4></p>\n";
     print $OUT "<pre>\n";
     print $OUT join("\n", @check_results), "\n";
     print $OUT "</pre>\n";
 
     # b)	Will check for barcode compatibility (with extension to 12+8 optional)
-    print $OUT "<h2>Barcode conflict checking</h2>\n";
+    print $OUT "<hr><h2>2. Barcode conflict checking</h2>\n";
     my @conflicts = check_barcodes(\@tobe_checked, $len);
     my @barcode_conflict_pair_count = count_barcode_conflict($len, @conflicts);
     print $OUT "<strong>Barcode conflict pair counting table</strong>";
@@ -173,21 +182,14 @@ sub compatibility_check {
 
 ######
 sub load_barcodes {
-    my $neb_CDI  = "https://raw.githubusercontent.com/swang8/barcodes/master/NEB_NEXT_CDI_Combined.csv";
-    my $perkin_HT_S1 = "https://raw.githubusercontent.com/swang8/barcodes/master/PerkinElmer_NextFlex_HT_SI.csv";
-    my $perkin_UDI = "https://raw.githubusercontent.com/swang8/barcodes/master/PerkinElmer_NextFlex_UDI.csv";
-    my $perkin_UDI_4k = "https://raw.githubusercontent.com/swang8/barcodes/master/PerkinElmer_NextFlex_UDI_4000.csv";
-    my $txgen_combo = "https://raw.githubusercontent.com/swang8/barcodes/master/TxGen_DuLig_CDI_Combined.csv";
-    my %h;
-    my @sources = map{uc $_}qw(neb_CDI perkin_HT_S1 perkin_UDI perkin_UDI_4K txgen_combo);
-    @h{@sources} = ($neb_CDI, $perkin_HT_S1, $perkin_UDI, $perkin_UDI_4k, $txgen_combo);
+    my @sources = keys %barcode_source_urls;
     my %return;
     map{
         my $s = $_;
         print STDERR "Source :  ", $s, "\n" if exists $ENV{DEBUG};
-        my %info = read_csv($h{$s});
+        my %info = read_csv($barcode_source_urls{$s});
         $return{$s} = \%info;
-    }keys %h;
+    } @sources;
     return %return;
 }
 
