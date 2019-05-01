@@ -87,12 +87,12 @@ sub compatibility_check {
         else{
             push @results, "i5 empty"    
         }
-        push @check_results,  "<p>". join(", ", @arr, @results), "</p>";
+        push @check_results,  join(", ", @arr, @results);
         if ($arr[5]){
-            push @tobe_checked, [uc $arr[4], uc $arr[5]];
+            push @tobe_checked, [$arr[3], uc $arr[4], uc $arr[5]];
         }
         else {
-            push @tobe_checked, [uc $arr[4]];    
+            push @tobe_checked, [$arr[3], uc $arr[4]];    
         }
     }
 
@@ -238,10 +238,10 @@ sub random_string {
 }
 
 sub check_barcodes{
-  my $arr_ref = shift;
+  my $arr_ref = shift; # [name, seq1, seq2]
   my $cutoff = shift;
   $cutoff = 3 unless $cutoff;
-  my @arr = @$arr_ref;
+  my @arr = map{my @p = @$_; shift @p; [@p]} @$arr_ref;
   # checking
   my %dist = calculate_distance(@arr);
   my @conflict=();
@@ -257,7 +257,7 @@ sub check_barcodes{
         # print STDERR $id, "\t", $dist{$id}, "\n" if exists $ENV{DEBUG};
         if (! exists $dist{$id}){die "$id not in \%dist\n"}
         if($dist{$id} < $cutoff){
-            push @conf, join("_", @{$arr[$ind2]}, $dist{$id});
+            push @conf, join("_", $arr_ref->[$ind2][0], @{$arr[$ind2]}, $dist{$id});
         }
       }else{
         my $id0 = join(" ", sort{$a cmp $b}($ba[0], $bb[0]) );
@@ -265,11 +265,11 @@ sub check_barcodes{
         #print STDERR $id0, "\t", $dist{$id0}, "\n" if exists $ENV{DEBUG};
         #print STDERR $id1, "\t", $dist{$id1}, "\n" if exists $ENV{DEBUG};
         if($dist{$id0} < $cutoff and $dist{$id1} < $cutoff){
-            push @conf, join("_", @{$arr[$ind2]}, $dist{$id0}, $dist{$id1});
+            push @conf, join("_",$arr_ref->[$ind2][0],  @{$arr[$ind2]}, $dist{$id0}, $dist{$id1});
         }
       }
     }
-    push @conflict, {"barcode"=>join("_", @{$arr[$ind1]}), "potential_conflict"=>join(",", @conf)} if @conf > 0;
+    push @conflict, {"barcode"=>join("_", $arr_ref->[$ind1][0], @{$arr[$ind1]}), "potential_conflict"=>join(",", @conf)} if @conf > 0;
   }
   return @conflict;
 }
