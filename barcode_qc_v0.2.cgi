@@ -130,7 +130,7 @@ sub compatibility_check {
     print $OUT  "Total samples: ", scalar @{$lib_info{$header_required[0]}}, "<br>\n";
     print $OUT  "Projects: total ", scalar unique(@{$lib_info{$header_required[1]}}),": ", join(", ", unique(@{$lib_info{$header_required[1]}})), "<br>\n";
     print $OUT  "Total unique barcodes: ", scalar unique(@{$lib_info{$header_required[3]}}), "<br>\n";
-    print $OUT  "From barcode sources: ", join(", ", map{"<a target= \"_blank\" href=\"$barcode_source_urls{$_}\">".$_."</a>" } (map{$_ if(exists $barcode_source_urls{$_})}unique(@{$lib_info{$header_required[6]}})) ), "<br>\n";
+    print $OUT  "From barcode sources: ", join(", ", map{"<a target= \"_blank\" href=\"$barcode_source_urls{$_}\">".$_."</a>" } (map{$_ if(exists $barcode_source_urls{$_})}unique(map{uc}@{$lib_info{$header_required[6]}})) ), "<br>\n";
     print $OUT "</div>";
     print $OUT "<br>";
     print $OUT "<div>Error count: <li>Index number error :  ",  add_color($num_error), "</li><li> i7 seq error :  ", add_color($i7_error), "</li><li>i5 seq error :  ", add_color($i5_error), "</li> <li> Plate position error: ", add_color($plate_pos_error), "</li> </div>\n";
@@ -196,7 +196,7 @@ sub compatibility_check {
     copy($output, "./".basename($output)) ; #or print STDERR "Copy failed :  $output can not be made.\n";
     print STDERR "Report :  ", "http://download.txgen.tamu.edu/check_reports/".basename($output);
 
-    my $any_error = 0; $any_error = 1 if $num_error or $i7_error or $i5_error or $plate_pos_error scalar @conflicts > 0;
+    my $any_error = 0; $any_error = 1 if $num_error or $i7_error or $i5_error or $plate_pos_error or scalar @conflicts > 0;
     return ({"report"=>$report_url, "errors"=> $any_error})
 }
 
