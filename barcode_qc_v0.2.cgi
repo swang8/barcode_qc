@@ -196,7 +196,7 @@ sub compatibility_check {
     copy($output, "./".basename($output)) ; #or print STDERR "Copy failed :  $output can not be made.\n";
     print STDERR "Report :  ", "http://download.txgen.tamu.edu/check_reports/".basename($output);
 
-    my $any_error = 0; $any_error = 1 if $num_error or $i7_error or $i5_error or scalar @conflicts > 0;
+    my $any_error = 0; $any_error = 1 if $num_error or $i7_error or $i5_error or $plate_pos_error scalar @conflicts > 0;
     return ({"report"=>$report_url, "errors"=> $any_error})
 }
 
