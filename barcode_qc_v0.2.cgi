@@ -18,6 +18,8 @@ my $start = localtime(time);
 my $q = new CGI;
 print $q->header(-type => "application/json", -charset => "utf-8");
 my $len = $q->param('selection');
+my $check_plate_position = $q->param('check');
+print STDERR "check_plate_position: ", $check_plate_position?1:0, "\n";
 $len += 1;
 my $lib_csv = get_file($q);
     
@@ -39,23 +41,38 @@ exit;
 sub compatibility_check {
     my $lib_csv = shift;
     my %lib_info = read_csv($lib_csv); 
+    print STDERR join(":", keys %lib_info), "\n";
 
     # check header in the lib csv
     # Sample	Project	Barcode_number	Barcode_id	i7	i5	Barcode_source
     my @header_required = qw(Sample	Project	Barcode_number	Barcode_id	i7	i5	Barcode_source);
+    push @header_required, "Plate_position" if $check_plate_position; 
+    @header_required = map{uc $_} @header_required;
     my @missed_header = ();
     map{
         push @missed_header, $_ unless exists $lib_info{$_}
-    }@header_required;
+    }map{uc $_}@header_required;
     print STDERR join("-", keys %lib_info), "\n" if exists $ENV{DEBUG};
     print STDERR join("+", @header_required), "\n" if exists $ENV{DEBUG};
-
-    if(@missed_header){ print STDERR "Error :  some of the headers are missing : ", join(",", @missed_header), "\n" ; exit }
 
     $lib_info{"Barcode_source"} = [map{uc $_} @{$lib_info{"Barcode_source"} }];
     my @projects = unique(@{$lib_info{$header_required[1]}});
 
-
+    # output html file
+    my $output = "/tmp/" . join("_", @projects) . "_". random_string() . ".html";
+    print STDERR "output :  ", $output, "\n" if exists $ENV{DEBUG};
+    open(my $OUT, ">", $output) or die $!;
+    print_header($OUT);
+    if(@missed_header){ print STDERR  "<h2>Error :  some of the headers are missing : ", join(",", @missed_header), "</h2>\n" ; }
+    if(@missed_header){ 
+        print $OUT "<h2>Error :  some of the headers are missing : ", join(",", @missed_header), "</h2>\n" ;
+        close $OUT;
+        my $new_file =  "/data3/Downloads/check_reports/" . basename($output);
+        my $report_url = "http://download.txgen.tamu.edu/check_reports/".basename($output);
+        copy($output, $new_file) ; #or print STDERR "Copy failed  :   $new_file can not be made.\n";
+        return ({"report"=>$report_url, "errors"=> 1})
+    }
+    
     my $lib_header_as_key = 4; # the 4th column from the required header
     my %lib_info_zip = zip($lib_header_as_key, @lib_info{@header_required}); # 4 indicate Barcode_id will be the key for hash
 
@@ -64,39 +81,42 @@ sub compatibility_check {
     my %barcodes_zip;
     map{
         my %tmp = %{$barcodes{$_}};
-        $barcodes_zip{$_} = {zip(2, @tmp{qw(Number	Id	i7	i5)})};
+        $barcodes_zip{$_} = {zip(2, @tmp{map{uc}qw(Number	Id	i7	i5 Coordinate)})};
     }keys %barcodes;
+
     # Check
-    my $output = "/tmp/" . join("_", @projects) . "_". random_string() . ".html";
-    print STDERR "output :  ", $output, "\n" if exists $ENV{DEBUG};
-    open(my $OUT, ">", $output) or die $!;
-    print_header($OUT);
     # a)	Will check for consistency Id vs Name vs Position in Plate
     print $OUT "<h2>1. Check for consistency Id vs Name vs Position in Plate </h2>\n";
     ## ids
     my @tobe_checked;
-    my ($num_error, $i7_error, $i5_error) = (0, 0, 0);
+    my ($num_error, $i7_error, $i5_error, $plate_pos_error) = (0, 0, 0, 0);
     my @check_results;
     foreach my $k (@{$lib_info{$header_required[$lib_header_as_key-1]}}){
         print STDERR "\$k :  ", $k, "\n" if exists $ENV{DEBUG};
         my @arr = @{$lib_info_zip{$k}};
-        print STDERR join("-", keys %{$barcodes_zip{$arr[-1]}}) if exists $ENV{DEBUG};
+        print STDERR join("-", keys %{$barcodes_zip{$arr[6]}}) if exists $ENV{DEBUG};
         my @results;
-        if (not exists $barcode_source_urls{$arr[-1]}) {
-            #print STDERR "Error :  $arr[-1] is not one of the (neb_CDI perkin_HT_S1 perkin_UDI perkin_UDI_4K txgen_dulig)!" if exists $ENV{DEBUG}; 
-            push @check_results, "<a style=\"background:salmon; color:blue\">Error :  $arr[-1] is not one of the (neb_CDI perkin_HT_S1 perkin_UDI perkin_UDI_4K txgen_dulig)!</a>";
+        $arr[6] = uc $arr[6]; # uppcase
+        if (not exists $barcode_source_urls{$arr[6]}) {
+            #print STDERR "Error :  $arr[6] is not one of the (neb_CDI perkin_HT_S1 perkin_UDI perkin_UDI_4K txgen_dulig)!" if exists $ENV{DEBUG}; 
+            push @check_results, "<a style=\"background:salmon; color:blue\">Error :  $arr[6] is not one of the (neb_CDI perkin_HT_S1 perkin_UDI perkin_UDI_4K txgen_dulig)!</a>";
         }
-        print STDERR "! ", $arr[2] , "\t", $barcodes_zip{$arr[-1]}->{$k}->[0], "\n" if exists $ENV{DEBUG};
-        print STDERR "! ", $arr[4] , "\t", $barcodes_zip{$arr[-1]}->{$k}->[2], "\n" if exists $ENV{DEBUG};
-        print STDERR "! ", $arr[5] , "\t", $barcodes_zip{$arr[-1]}->{$k}->[3], "\n" if exists $ENV{DEBUG};
-        if ($arr[2] == $barcodes_zip{$arr[-1]}->{$k}->[0]){push @results, "Index number matching"}else{push @results, "<a style=\"color:red\">Index number NOT matching</a>"; $num_error++}
-        if ($arr[4] eq $barcodes_zip{$arr[-1]}->{$k}->[2]){push @results, "i7 matching"}else{push @results, "<a style=\"color:red\">i7 NOT matching</a>"; $i7_error++}
-        if ($barcodes_zip{$arr[-1]}->{$k}->[3] ){
-            if ($arr[5] eq $barcodes_zip{$arr[-1]}->{$k}->[3]){push @results, "i5 matching"}else{push @results, "<a style=\"color:red\">i5 NOT matching </a>"; $i5_error++}
+        print STDERR "! ", $arr[2] , "\t", $barcodes_zip{$arr[6]}->{$k}->[0], "\n" if exists $ENV{DEBUG};
+        print STDERR "! ", $arr[4] , "\t", $barcodes_zip{$arr[6]}->{$k}->[2], "\n" if exists $ENV{DEBUG};
+        print STDERR "! ", $arr[5] , "\t", $barcodes_zip{$arr[6]}->{$k}->[3], "\n" if exists $ENV{DEBUG};
+        if ($arr[2] == $barcodes_zip{$arr[6]}->{$k}->[0]){push @results, "Index number matching"}else{push @results, "<a style=\"color:red\">Index number NOT matching</a>"; $num_error++}
+        if ($arr[4] eq $barcodes_zip{$arr[6]}->{$k}->[2]){push @results, "i7 matching"}else{push @results, "<a style=\"color:red\">i7 NOT matching</a>"; $i7_error++}
+        if ($barcodes_zip{$arr[6]}->{$k}->[3] ){
+            if ($arr[5] eq $barcodes_zip{$arr[6]}->{$k}->[3]){push @results, "i5 matching"}else{push @results, "<a style=\"color:red\">i5 NOT matching </a>"; $i5_error++}
         }
         else{
             push @results, "i5 empty"    
         }
+        # check plate position
+        if ($check_plate_position ){
+            if ($arr[7] eq $barcodes_zip{$arr[6]}->{$k}->[-1]){push @results, "Plate position is matching"}else{push @results, "<a style=\"color:red\">Plate position is NOT matching: $arr[7] vs $barcodes_zip{$arr[6]}->{$k}->[-1])</a> "; $plate_pos_error++;}    
+        }
+
         push @check_results,  join(", ", @arr, @results);
         if ($arr[5]){
                 push @tobe_checked, [@arr[0, 3], uc $arr[4], uc $arr[5]];
@@ -113,7 +133,7 @@ sub compatibility_check {
     print $OUT  "From barcode sources: ", join(", ", map{"<a target= \"_blank\" href=\"$barcode_source_urls{$_}\">".$_."</a>" } (map{$_ if(exists $barcode_source_urls{$_})}unique(@{$lib_info{$header_required[6]}})) ), "<br>\n";
     print $OUT "</div>";
     print $OUT "<br>";
-    print $OUT "<div>Error count: <li>Index number error :  ",  add_color($num_error), "</li><li> i7 seq error :  ", add_color($i7_error), "</li><li>i5 seq error :  ", add_color($i5_error), "</li></div>\n";
+    print $OUT "<div>Error count: <li>Index number error :  ",  add_color($num_error), "</li><li> i7 seq error :  ", add_color($i7_error), "</li><li>i5 seq error :  ", add_color($i5_error), "</li> <li> Plate position error: ", add_color($plate_pos_error), "</li> </div>\n";
     print $OUT "<p><h4>Error list : </h4></p>\n";
     print $OUT "<pre>\n";
     print $OUT join("\n", grep{/NOT/}@check_results), "\n";
@@ -212,15 +232,15 @@ sub read_csv {
     while(<$IN>){
         next if /\#/;
         chomp;
-        s/\,+$//;
         next unless /\S/;
         $line++;
         s/\s+//g;
+        s/\,+$//;
         my @t = split /\,/, $_;
-        if ($line == 1){@header = @t;  print STDERR "Header :  ", join("  :  ", @header), "\n" if exists $ENV{DEBUG}; next}
+        if ($line == 1){@header = map{uc}@t;  print STDERR "Header :  ", join("  :  ", @header), "\n" if exists $ENV{DEBUG}; next}
         map{
-            push @{$return{$header[$_]}}, $t[$_]
-        }0..$#t;
+            push @{$return{$header[$_]}}, (defined $t[$_]?$t[$_]:"")
+        }0..$#header;
     }
     close $IN;
     print STDERR join("-", keys %return), "\n" if exists $ENV{DEBUG};
